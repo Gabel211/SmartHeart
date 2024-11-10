@@ -1,0 +1,93 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+
+// Definirea pinilor
+#define PULSE_PIN 7          // Pinul de citire pentru senzorul de puls SEN-11574
+#define EKG_PIN A0           // Pinul de citire pentru senzorul EKG AD8232
+
+SoftwareSerial BTSerial(10, 11); // RX, TX pentru comunicarea cu modulul HC-06
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Inițializare LCD 16x2 cu I2C
+
+long pulseCount = 0;       // Contor pentru numărul de bătăi de inimă
+long bpm = 0;              // BPM calculat
+long lastPulseTime = 0;    // Timpul ultimei bătăi de inimă
+int ekgValue = 0;          // Valoarea citită de la senzorul EKG
+float systolic = 0;        // Tensiunea sistolică
+float diastolic = 0;      // Tensiunea diastolică
+
+void setup() {
+  Serial.begin(9600);  // Inițializare port serial pentru monitorul serial
+  BTSerial.begin(9600);  // Inițializare port serial pentru modulul HC-06
+
+  lcd.begin(16, 2);  // Inițializare LCD
+  lcd.print("Senzori de"); // Mesaj pe LCD la început
+  lcd.setCursor(0, 1);
+  lcd.print("Puls & Tensiune");
+
+  pinMode(PULSE_PIN, INPUT);  // Senzor de puls conectat la pinul 7
+  pinMode(EKG_PIN, INPUT);    // Senzor EKG conectat la pinul A0
+
+  delay(2000);  // Pauză de 2 secunde
+  lcd.clear();
+}
+
+void loop() {
+  // Citirea semnalului de la senzorul de puls SEN-11574
+  long irValue = analogRead(PULSE_PIN);  // Citiți valoarea IR de la senzor
+
+  if (irValue > 500) {  // Dacă semnalul IR depășește un prag, considerăm că este un puls
+    long currentTime = millis();
+
+    // Calculăm BPM-ul pe baza intervalului între bătăi
+    if (currentTime - lastPulseTime > 1000) {  // Dacă au trecut mai mult de 1 secundă
+      bpm = pulseCount * 60;  // Calculăm BPM-ul
+      pulseCount = 0;         // Resetăm contorul de pulsuri
+    }
+
+    lastPulseTime = currentTime;  // Actualizăm timpul ultimei bătăi
+    pulseCount++;  // Incrementăm contorul de bătăi
+  }
+
+  // Afișăm BPM pe LCD
+  lcd.setCursor(0, 0);
+  lcd.print("BPM: ");
+  lcd.print(bpm);
+  lcd.print("   ");  // Golim restul de pe linie pentru a evita afișarea de caractere vechi
+
+  // Afișăm BPM pe Serial Monitor
+  Serial.print("BPM: ");
+  Serial.println(bpm);
+
+  // Citirea semnalului EKG de la senzorul EKG (AD8232)
+  ekgValue = analogRead(EKG_PIN);  // Citiți semnalul EKG de la senzor
+
+  // Mapăm valorile citite de la senzor pentru a obține tensiunea sistolică și diastolică
+  systolic = map(ekgValue, 0, 1023, 90, 120);  // Tensiunea sistolică estimată
+  diastolic = map(ekgValue, 0, 1023, 60, 80);  // Tensiunea diastolică estimată
+
+  // Afișăm tensiunea pe LCD
+  lcd.setCursor(0, 1);
+  lcd.print("Sys: ");
+  lcd.print(systolic);
+  lcd.print(" Di: ");
+  lcd.print(diastolic);
+  lcd.print("   ");  // Golim restul de pe linie pentru a evita afișarea de caractere vechi
+
+  // Afișăm tensiunea pe Serial Monitor
+  Serial.print("Sys: ");
+  Serial.print(systolic);
+  Serial.print(" Di: ");
+  Serial.println(diastolic);
+
+  // Trimiterea datelor prin Bluetooth
+  BTSerial.print("BPM: ");
+  BTSerial.print(bpm);
+  BTSerial.print(" Sys: ");
+  BTSerial.print(systolic);
+  BTSerial.print(" Di: ");
+  BTSerial.println(diastolic);
+
+  delay(1000);  // Pauză între citiri (1 secundă)
+}
